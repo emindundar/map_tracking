@@ -1,7 +1,11 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:maptracking/permisson/permission_service.dart';
 import 'package:maptracking/permisson/permission_view.dart';
@@ -21,6 +25,8 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
   bool _isAtCurrentPosition = true;
 
   late final AnimatedMapController _animatedMapController;
+  final TextEditingController _textController = TextEditingController();
+  List<Marker> _markers = [];
 
   @override
   void initState() {
@@ -32,7 +38,53 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
   @override
   void dispose() {
     _animatedMapController.dispose();
+    _textController.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchLocation() async {
+    final query = _textController.text;
+    if (query.isEmpty) return;
+    final url = Uri.parse(
+      'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1',
+    );
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'com.emindundar.maptracking'},
+      );
+      if (response.statusCode == 200) {
+        final List data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final lat = double.parse(data[0]['lat']);
+          final lon = double.parse(data[0]['lon']);
+          final displayName = data[0]['display_name'];
+
+          final searchedLocation = LatLng(lat, lon);
+          _animatedMapController.animateTo(dest: searchedLocation, zoom: 15);
+          setState(() {
+            _markers.add(
+              Marker(
+                point: searchedLocation,
+                width: 40,
+                height: 40,
+                child: const Icon(Icons.location_on),
+              ),
+            );
+          });
+        }
+        _animatedMapController.animateTo(
+          dest: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+          zoom: 15,
+        );
+        FocusScope.of(context).unfocus();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error:200 dönmedi $e");
+      }
+    }
   }
 
   Future<void> _checkPermission() async {
@@ -123,47 +175,76 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Harita')),
-      body: FlutterMap(
-        mapController: _animatedMapController.mapController,
-        options: MapOptions(
-          initialCenter: _currentPosition != null
-              ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-              : LatLng(37.7827875, 29.0966476),
-          initialZoom: 15,
-          onPositionChanged: _onMapMove,
-        ),
+      body: Column(
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.emindundar.maptracking',
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _textController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _searchLocation(),
+              decoration: InputDecoration(
+                hintText: 'Konum ara...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _textController.clear();
+                  },
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
           ),
-          if (_currentPosition != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: LatLng(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
+          Expanded(
+            child: FlutterMap(
+              mapController: _animatedMapController.mapController,
+              options: MapOptions(
+                initialCenter: _currentPosition != null
+                    ? LatLng(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
+                      )
+                    : LatLng(37.7827875, 29.0966476),
+                initialZoom: 15,
+                onPositionChanged: _onMapMove,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.emindundar.maptracking',
+                ),
+                if (_currentPosition != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: LatLng(
+                          _currentPosition!.latitude,
+                          _currentPosition!.longitude,
+                        ),
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.blue,
+                          size: 40,
+                        ),
+                      ),
+                    ],
                   ),
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Colors.blue,
-                    size: 40,
-                  ),
+                const Scalebar(),
+                RichAttributionWidget(
+                  attributions: [
+                    TextSourceAttribution(
+                      'OpenStreetMap contributors',
+                      onTap: () => launchUrl(
+                        Uri.parse('https://openstreetmap.org/copyright'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          const Scalebar(),
-          RichAttributionWidget(
-            attributions: [
-              TextSourceAttribution(
-                'OpenStreetMap contributors',
-                onTap: () =>
-                    launchUrl(Uri.parse('https://openstreetmap.org/copyright')),
-              ),
-            ],
           ),
         ],
       ),
