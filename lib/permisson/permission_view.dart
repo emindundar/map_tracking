@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:maptracking/map/map_view_model.dart';
 import 'package:maptracking/permisson/permission_service.dart';
 
-class PermissionView extends StatefulWidget {
-  const PermissionView({super.key, required this.onPermissionGranted});
-  final VoidCallback onPermissionGranted;
+class PermissionView extends ConsumerStatefulWidget {
+  const PermissionView({super.key});
 
   @override
-  State<PermissionView> createState() => _PermissionViewState();
+  ConsumerState<PermissionView> createState() => _PermissionViewState();
 }
 
-class _PermissionViewState extends State<PermissionView> {
+class _PermissionViewState extends ConsumerState<PermissionView> {
   bool _isLoading = true;
   String _message = 'Konum izni kontrol ediliyor...';
   LocationPermission? _permissionStatus;
@@ -88,7 +89,8 @@ class _PermissionViewState extends State<PermissionView> {
         setState(() {
           _message = 'Konum izni verildi!';
         });
-        widget.onPermissionGranted();
+        // Riverpod ile izin durumunu yenile
+        ref.invalidate(permissionStatusProvider);
         break;
 
       case LocationPermission.unableToDetermine:

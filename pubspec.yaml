@@ -19,6 +19,8 @@ dependencies:
   flutter_map_animations: ^0.9.0
   # HTTP
   http: ^1.6.0
+  # State Management
+  flutter_riverpod: ^2.6.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

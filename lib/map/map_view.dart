@@ -1,136 +1,65 @@
-import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:maptracking/permisson/permission_service.dart';
+import 'package:maptracking/map/map_view_model.dart';
 import 'package:maptracking/permisson/permission_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class MapView extends StatefulWidget {
+class MapView extends ConsumerStatefulWidget {
   const MapView({super.key});
 
   @override
-  State<MapView> createState() => _MapViewState();
+  ConsumerState<MapView> createState() => _MapViewState();
 }
 
-class _MapViewState extends State<MapView> with TickerProviderStateMixin {
-  bool _hasPermission = false;
-  bool _isChecking = true;
-  Position? _currentPosition;
-  bool _isAtCurrentPosition = true;
-
+class _MapViewState extends ConsumerState<MapView>
+    with TickerProviderStateMixin {
   late final AnimatedMapController _animatedMapController;
   final TextEditingController _textController = TextEditingController();
-  List<Marker> _markers = [];
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _animatedMapController = AnimatedMapController(vsync: this);
-    _checkPermission();
   }
 
   @override
   void dispose() {
     _animatedMapController.dispose();
     _textController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _searchLocation() async {
-    final query = _textController.text;
-    if (query.isEmpty) return;
-    final url = Uri.parse(
-      'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1',
-    );
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      ref.read(mapViewModelProvider.notifier).searchLocation(query);
+    });
+  }
 
-    try {
-      final response = await http.get(
-        url,
-        headers: {'User-Agent': 'com.emindundar.maptracking'},
-      );
-      if (response.statusCode == 200) {
-        final List data = json.decode(response.body);
-        if (data.isNotEmpty) {
-          final lat = double.parse(data[0]['lat']);
-          final lon = double.parse(data[0]['lon']);
-          final displayName = data[0]['display_name'];
-
-          final searchedLocation = LatLng(lat, lon);
-          _animatedMapController.animateTo(dest: searchedLocation, zoom: 15);
-          setState(() {
-            _markers.add(
-              Marker(
-                point: searchedLocation,
-                width: 40,
-                height: 40,
-                child: const Icon(Icons.location_on),
-              ),
-            );
-          });
-        }
-        _animatedMapController.animateTo(
-          dest: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          zoom: 15,
-        );
-        FocusScope.of(context).unfocus();
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error:200 dönmedi $e");
-      }
+  void _onResultSelected(Map<String, dynamic> result) {
+    final location = ref
+        .read(mapViewModelProvider.notifier)
+        .selectSearchResult(result);
+    if (location != null) {
+      _animatedMapController.animateTo(dest: location, zoom: 15);
+      _textController.text = result['display_name'];
     }
-  }
-
-  Future<void> _checkPermission() async {
-    final status = await PermissionService.requestLocationPermission();
-
-    if (!mounted) return;
-
-    final checkHasPermission =
-        status == LocationPermission.whileInUse ||
-        status == LocationPermission.always;
-
-    if (checkHasPermission) {
-      await _getCurrentPosition();
-    }
-
-    setState(() {
-      _hasPermission = checkHasPermission;
-      _isChecking = false;
-    });
-  }
-
-  Future<void> _getCurrentPosition() async {
-    final position = await PermissionService.getUserCurrentPosition();
-    if (!mounted) return;
-    setState(() {
-      _currentPosition = position;
-    });
-  }
-
-  void _onPermissionGranted() {
-    _getCurrentPosition();
-    setState(() {
-      _hasPermission = true;
-      _isChecking = false;
-    });
+    FocusScope.of(context).unfocus();
   }
 
   void _goToCurrentPosition() {
-    if (_currentPosition == null) return;
-    _animatedMapController.animateTo(
-      dest: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-      zoom: 15,
-    );
-    setState(() {
-      _isAtCurrentPosition = true;
-    });
+    final location = ref
+        .read(mapViewModelProvider.notifier)
+        .goToCurrentPosition();
+    if (location != null) {
+      _animatedMapController.animateTo(dest: location, zoom: 15);
+    }
   }
 
   void _zoomIn() {
@@ -144,105 +73,169 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
   }
 
   void _onMapMove(MapCamera camera, bool hasGesture) {
-    if (!hasGesture || _currentPosition == null) return;
-
-    final currentLatLng = LatLng(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-    );
-
-    const tolerance = 0.005;
-    final isNear =
-        (camera.center.latitude - currentLatLng.latitude).abs() < tolerance &&
-        (camera.center.longitude - currentLatLng.longitude).abs() < tolerance;
-
-    if (_isAtCurrentPosition != isNear) {
-      setState(() {
-        _isAtCurrentPosition = isNear;
-      });
-    }
+    if (!hasGesture) return;
+    ref
+        .read(mapViewModelProvider.notifier)
+        .onMapMove(camera.center.latitude, camera.center.longitude);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isChecking) {
+    final mapState = ref.watch(mapViewModelProvider);
+
+    // İzinler kontrol ediliyor
+    if (mapState.isChecking) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (!_hasPermission) {
-      return PermissionView(onPermissionGranted: _onPermissionGranted);
+    // İzin verilmemiş
+    if (!mapState.hasPermission) {
+      return const PermissionView();
     }
+
+    final currentPosition = mapState.currentPosition;
+    final initialCenter = currentPosition != null
+        ? LatLng(currentPosition.latitude, currentPosition.longitude)
+        : LatLng(37.7827875, 29.0966476);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Harita')),
-      body: Column(
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _textController,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _searchLocation(),
-              decoration: InputDecoration(
-                hintText: 'Konum ara...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _textController.clear();
-                  },
-                ),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ),
-          Expanded(
-            child: FlutterMap(
-              mapController: _animatedMapController.mapController,
-              options: MapOptions(
-                initialCenter: _currentPosition != null
-                    ? LatLng(
-                        _currentPosition!.latitude,
-                        _currentPosition!.longitude,
-                      )
-                    : LatLng(37.7827875, 29.0966476),
-                initialZoom: 15,
-                onPositionChanged: _onMapMove,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.emindundar.maptracking',
-                ),
-                if (_currentPosition != null)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: LatLng(
-                          _currentPosition!.latitude,
-                          _currentPosition!.longitude,
-                        ),
-                        width: 40,
-                        height: 40,
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Colors.blue,
-                          size: 40,
-                        ),
-                      ),
-                    ],
+          Column(
+            children: [
+              Expanded(
+                child: FlutterMap(
+                  mapController: _animatedMapController.mapController,
+                  options: MapOptions(
+                    initialCenter: initialCenter,
+                    initialZoom: 15,
+                    onPositionChanged: _onMapMove,
                   ),
-                const Scalebar(),
-                RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      'OpenStreetMap contributors',
-                      onTap: () => launchUrl(
-                        Uri.parse('https://openstreetmap.org/copyright'),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.emindundar.maptracking',
+                    ),
+                    if (currentPosition != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(
+                              currentPosition.latitude,
+                              currentPosition.longitude,
+                            ),
+                            width: 40,
+                            height: 40,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.blue,
+                              size: 40,
+                            ),
+                          ),
+                          // Arama sonucu eklenen marker'lar
+                          ...mapState.markers.map(
+                            (location) => Marker(
+                              point: location,
+                              width: 40,
+                              height: 40,
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.red,
+                                size: 40,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                    const Scalebar(),
+                    RichAttributionWidget(
+                      attributions: [
+                        TextSourceAttribution(
+                          'OpenStreetMap contributors',
+                          onTap: () => launchUrl(
+                            Uri.parse('https://openstreetmap.org/copyright'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+          Positioned(
+            top: 30,
+            left: 16,
+            right: 16,
+            child: Column(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(blurRadius: 10, color: Colors.black12),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: TextField(
+                      controller: _textController,
+                      textInputAction: TextInputAction.search,
+                      onChanged: _onSearchChanged,
+                      decoration: InputDecoration(
+                        hintText: "Konum ara...",
+                        prefixIcon: Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          icon: Icon(Icons.clear),
+                          onPressed: () {
+                            _textController.clear();
+                            ref
+                                .read(mapViewModelProvider.notifier)
+                                .clearSearchResults();
+                          },
+                        ),
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.all(15),
+                      ),
+                    ),
+                  ),
+                ),
+                if (mapState.searchResults.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(blurRadius: 10, color: Colors.black12),
+                      ],
+                    ),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: mapState.searchResults.length,
+                      itemBuilder: (context, index) {
+                        final result = mapState.searchResults[index];
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.location_on,
+                            color: Colors.red,
+                          ),
+                          title: Text(
+                            result['display_name'],
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          onTap: () => _onResultSelected(result),
+                        );
+                      },
+                    ),
+                  ),
               ],
             ),
           ),
@@ -265,7 +258,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
             child: const Icon(Icons.remove),
           ),
           const SizedBox(height: 8),
-          if (!_isAtCurrentPosition)
+          if (!mapState.isAtCurrentPosition)
             FloatingActionButton(
               heroTag: 'myLocation',
               onPressed: _goToCurrentPosition,

@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class PermissionService {
   static Future<LocationPermission> requestLocationPermission() async {
@@ -21,3 +22,7 @@ class PermissionService {
     return await Geolocator.getCurrentPosition();
   }
 }
+
+final permissionServiceProvider = Provider<PermissionService>((ref) {
+  return PermissionService();
+});
