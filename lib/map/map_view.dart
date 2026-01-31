@@ -5,7 +5,10 @@ import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maptracking/map/map_view_model.dart';
-import 'package:maptracking/permisson/permission_view.dart';
+import 'package:maptracking/map/location_result_model.dart';
+import 'package:maptracking/permission/permission_view.dart';
+import 'package:maptracking/permission/permission_view_model.dart';
+import 'package:maptracking/util/constants.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MapView extends ConsumerStatefulWidget {
@@ -18,39 +21,87 @@ class MapView extends ConsumerStatefulWidget {
 class _MapViewState extends ConsumerState<MapView>
     with TickerProviderStateMixin {
   late final AnimatedMapController _animatedMapController;
-  final TextEditingController _textController = TextEditingController();
+  final TextEditingController _startController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
   Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _animatedMapController = AnimatedMapController(vsync: this);
+    // Varsayılan olarak mevcut konumu başlangıç olarak ayarla
+    _startController.text = AppStrings.currentLocation;
   }
 
   @override
   void dispose() {
     _animatedMapController.dispose();
-    _textController.dispose();
+    _startController.dispose();
+    _destinationController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
-  void _onSearchChanged(String query) {
+  void _onStartSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      ref.read(mapViewModelProvider.notifier).searchLocation(query);
+      ref
+          .read(mapViewModelProvider.notifier)
+          .searchLocation(query, SearchField.start);
     });
   }
 
-  void _onResultSelected(Map<String, dynamic> result) {
+  void _onDestinationSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      ref
+          .read(mapViewModelProvider.notifier)
+          .searchLocation(query, SearchField.destination);
+    });
+  }
+
+  void _onStartResultSelected(LocationResult result) {
     final location = ref
         .read(mapViewModelProvider.notifier)
-        .selectSearchResult(result);
-    if (location != null) {
-      _animatedMapController.animateTo(dest: location, zoom: 15);
-      _textController.text = result['display_name'];
-    }
+        .selectAsStartPoint(result);
+    _startController.text = result.displayName;
+    _animatedMapController.animateTo(dest: location, zoom: 15);
     FocusScope.of(context).unfocus();
+    _tryFetchRoute();
+  }
+
+  void _onDestinationResultSelected(LocationResult result) {
+    final location = ref
+        .read(mapViewModelProvider.notifier)
+        .selectAsDestination(result);
+    _destinationController.text = result.displayName;
+    _animatedMapController.animateTo(dest: location, zoom: 15);
+    FocusScope.of(context).unfocus();
+    _tryFetchRoute();
+  }
+
+  void _tryFetchRoute() {
+    final mapState = ref.read(mapViewModelProvider);
+    final permissionState = ref.read(permissionViewModelProvider);
+
+    // Start point belirlendi mi?
+    final hasStart = mapState.useCurrentLocationAsStart
+        ? permissionState.currentPosition != null
+        : mapState.startPoint != null;
+
+    // Destination belirlendi mi?
+    final hasDestination = mapState.destination != null;
+
+    if (hasStart && hasDestination) {
+      ref.read(mapViewModelProvider.notifier).fetchRoute();
+    }
+  }
+
+  void _useCurrentLocationAsStart() {
+    ref.read(mapViewModelProvider.notifier).toggleCurrentLocationAsStart(true);
+    _startController.text = AppStrings.currentLocation;
+    ref.read(mapViewModelProvider.notifier).clearSearchResults();
+    _tryFetchRoute();
   }
 
   void _goToCurrentPosition() {
@@ -81,25 +132,51 @@ class _MapViewState extends ConsumerState<MapView>
 
   @override
   Widget build(BuildContext context) {
+    final permissionState = ref.watch(permissionViewModelProvider);
     final mapState = ref.watch(mapViewModelProvider);
 
     // İzinler kontrol ediliyor
-    if (mapState.isChecking) {
+    if (permissionState.isChecking) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // İzin verilmemiş
-    if (!mapState.hasPermission) {
+    if (!permissionState.hasPermission) {
       return const PermissionView();
     }
 
-    final currentPosition = mapState.currentPosition;
+    final currentPosition = permissionState.currentPosition;
     final initialCenter = currentPosition != null
         ? LatLng(currentPosition.latitude, currentPosition.longitude)
         : LatLng(37.7827875, 29.0966476);
 
+    // Hata durumunu dinle ve SnackBar göster
+    ref.listen<MapState>(mapViewModelProvider, (previous, next) {
+      if (next.errorMessage != null &&
+          previous?.errorMessage != next.errorMessage) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(next.errorMessage!),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                action: SnackBarAction(
+                  label: AppStrings.closeButton,
+                  textColor: Colors.white,
+                  onPressed: () {
+                    ref.read(mapViewModelProvider.notifier).clearError();
+                  },
+                ),
+              ),
+            );
+          }
+        });
+      }
+    });
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Harita')),
+      appBar: AppBar(title: const Text(AppStrings.mapTitle)),
       body: Stack(
         children: [
           Column(
@@ -109,14 +186,13 @@ class _MapViewState extends ConsumerState<MapView>
                   mapController: _animatedMapController.mapController,
                   options: MapOptions(
                     initialCenter: initialCenter,
-                    initialZoom: 15,
+                    initialZoom: AppConstants.defaultZoom,
                     onPositionChanged: _onMapMove,
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.emindundar.maptracking',
+                      urlTemplate: AppConstants.openStreetMapTileUrl,
+                      userAgentPackageName: AppConstants.userAgentPackageName,
                     ),
                     if (currentPosition != null)
                       MarkerLayer(
@@ -129,15 +205,27 @@ class _MapViewState extends ConsumerState<MapView>
                             width: 40,
                             height: 40,
                             child: const Icon(
-                              Icons.location_on,
+                              Icons.my_location,
                               color: Colors.blue,
                               size: 40,
                             ),
                           ),
-                          // Arama sonucu eklenen marker'lar
-                          ...mapState.markers.map(
-                            (location) => Marker(
-                              point: location,
+                          // Başlangıç marker'ı (mavi)
+                          if (mapState.startPoint != null)
+                            Marker(
+                              point: mapState.startPoint!,
+                              width: 40,
+                              height: 40,
+                              child: const Icon(
+                                Icons.trip_origin,
+                                color: Colors.blue,
+                                size: 40,
+                              ),
+                            ),
+                          // Varış marker'ı (kırmızı)
+                          if (mapState.destination != null)
+                            Marker(
+                              point: mapState.destination!,
                               width: 40,
                               height: 40,
                               child: const Icon(
@@ -146,6 +234,16 @@ class _MapViewState extends ConsumerState<MapView>
                                 size: 40,
                               ),
                             ),
+                        ],
+                      ),
+                    // Rota çizgisi
+                    if (mapState.routePoints.isNotEmpty)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: mapState.routePoints,
+                            color: Colors.blue,
+                            strokeWidth: 5.0,
                           ),
                         ],
                       ),
@@ -153,9 +251,9 @@ class _MapViewState extends ConsumerState<MapView>
                     RichAttributionWidget(
                       attributions: [
                         TextSourceAttribution(
-                          'OpenStreetMap contributors',
+                          AppStrings.openStreetMapAttribution,
                           onTap: () => launchUrl(
-                            Uri.parse('https://openstreetmap.org/copyright'),
+                            Uri.parse(AppConstants.openStreetMapCopyright),
                           ),
                         ),
                       ],
@@ -165,44 +263,126 @@ class _MapViewState extends ConsumerState<MapView>
               ),
             ],
           ),
+          // Arama alanları
           Positioned(
-            top: 30,
+            top: 16,
             left: 16,
             right: 16,
             child: Column(
               children: [
+                // Arama kutuları container
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(blurRadius: 10, color: Colors.black12),
                     ],
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: TextField(
-                      controller: _textController,
-                      textInputAction: TextInputAction.search,
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        hintText: "Konum ara...",
-                        prefixIcon: Icon(Icons.search),
-                        suffixIcon: IconButton(
-                          icon: Icon(Icons.clear),
-                          onPressed: () {
-                            _textController.clear();
-                            ref
-                                .read(mapViewModelProvider.notifier)
-                                .clearSearchResults();
-                          },
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      children: [
+                        // Başlangıç noktası
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.trip_origin,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _startController,
+                                textInputAction: TextInputAction.search,
+                                onChanged: _onStartSearchChanged,
+                                onTap: () {
+                                  if (_startController.text ==
+                                      AppStrings.currentLocation) {
+                                    _startController.clear();
+                                  }
+                                },
+                                decoration: InputDecoration(
+                                  hintText: AppStrings.startPointHint,
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_startController.text.isNotEmpty &&
+                                          _startController.text !=
+                                              AppStrings.currentLocation)
+                                        IconButton(
+                                          icon: Icon(Icons.clear, size: 20),
+                                          onPressed: () {
+                                            _startController.clear();
+                                            _useCurrentLocationAsStart();
+                                          },
+                                        ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.my_location,
+                                          size: 20,
+                                          color: Colors.blue,
+                                        ),
+                                        onPressed: _useCurrentLocationAsStart,
+                                        tooltip: AppStrings.currentLocation,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.all(15),
-                      ),
+                        const Divider(height: 1),
+                        // Varış noktası
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _destinationController,
+                                textInputAction: TextInputAction.search,
+                                onChanged: _onDestinationSearchChanged,
+                                decoration: InputDecoration(
+                                  hintText: AppStrings.destinationHint,
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  suffixIcon:
+                                      _destinationController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: Icon(Icons.clear, size: 20),
+                                          onPressed: () {
+                                            _destinationController.clear();
+                                            ref
+                                                .read(
+                                                  mapViewModelProvider.notifier,
+                                                )
+                                                .clearDestination();
+                                          },
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ),
+                // Arama sonuçları
                 if (mapState.searchResults.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(top: 4),
@@ -221,19 +401,55 @@ class _MapViewState extends ConsumerState<MapView>
                       itemBuilder: (context, index) {
                         final result = mapState.searchResults[index];
                         return ListTile(
-                          leading: const Icon(
-                            Icons.location_on,
-                            color: Colors.red,
+                          leading: Icon(
+                            mapState.activeSearchField == SearchField.start
+                                ? Icons.trip_origin
+                                : Icons.location_on,
+                            color:
+                                mapState.activeSearchField == SearchField.start
+                                ? Colors.green
+                                : Colors.red,
                           ),
                           title: Text(
-                            result['display_name'],
+                            result.displayName,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 14),
                           ),
-                          onTap: () => _onResultSelected(result),
+                          onTap: () {
+                            if (mapState.activeSearchField ==
+                                SearchField.start) {
+                              _onStartResultSelected(result);
+                            } else {
+                              _onDestinationResultSelected(result);
+                            }
+                          },
                         );
                       },
+                    ),
+                  )
+                else if (mapState.hasSearched &&
+                    mapState.searchResults.isEmpty &&
+                    !mapState.isSearching)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(blurRadius: 10, color: Colors.black12),
+                      ],
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search_off, color: Colors.grey),
+                        SizedBox(width: 12),
+                        Text(
+                          AppStrings.noResultsFound,
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -260,7 +476,7 @@ class _MapViewState extends ConsumerState<MapView>
           const SizedBox(height: 8),
           if (!mapState.isAtCurrentPosition)
             FloatingActionButton(
-              heroTag: 'myLocation',
+              heroTag: 'currentLocation',
               onPressed: _goToCurrentPosition,
               child: const Icon(Icons.my_location),
             ),

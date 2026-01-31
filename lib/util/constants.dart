@@ -1,0 +1,58 @@
+/// Uygulama genelinde kullanılan sabit değerler
+class AppConstants {
+  AppConstants._();
+
+  // API URLs
+  static const String nominatimBaseUrl = 'https://nominatim.openstreetmap.org';
+  static const String osrmBaseUrl = 'http://localhost:5001';
+  static const String openStreetMapTileUrl =
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const String openStreetMapCopyright =
+      'https://openstreetmap.org/copyright';
+
+  // User Agent
+  static const String userAgentPackageName = 'com.emindundar.maptracking';
+
+  // Map Defaults
+  static const double defaultZoom = 15.0;
+  static const double positionTolerance = 0.005;
+
+  // Search
+  static const int searchLimit = 3;
+  static const int searchDebounceMs = 500;
+  static const int minSearchQueryLength = 2;
+}
+
+/// Uygulama genelinde kullanılan text string'leri
+class AppStrings {
+  AppStrings._();
+
+  // AppBar Titles
+  static const String mapTitle = 'Harita';
+
+  // Search
+  static const String searchHint = 'Konum ara...';
+  static const String startPointHint = 'Başlangıç noktası';
+  static const String destinationHint = 'Varış noktası';
+  static const String currentLocation = 'Mevcut Konum';
+  static const String noResultsFound = 'Sonuç bulunamadı';
+
+  // Buttons
+  static const String closeButton = 'Kapat';
+  static const String retryButton = 'Tekrar Kontrol Et';
+  static const String appSettingsButton = 'Uygulama Ayarları';
+  static const String locationSettingsButton = 'Konum Ayarları';
+
+  // Permission Messages
+  static const String checkingPermission = 'Konum izni kontrol ediliyor...';
+  static const String permissionGranted = 'Konum izni verildi!';
+
+  // Error Messages
+  static const String serverError = 'Sunucu hatası:';
+  static const String searchError =
+      'Arama yapılamadı, internet bağlantınızı kontrol edin.';
+  static const String routeError = 'Rota alınamadı, lütfen tekrar deneyin.';
+
+  // Attribution
+  static const String openStreetMapAttribution = 'OpenStreetMap contributors';
+}

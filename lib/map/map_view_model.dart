@@ -1,134 +1,248 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:maptracking/map/map_repository.dart';
-import 'package:maptracking/permisson/permission_service.dart';
+import 'package:maptracking/map/map_repostory.dart';
+import 'package:maptracking/map/location_result_model.dart';
+import 'package:maptracking/permission/permission_view_model.dart';
+import 'package:maptracking/util/constants.dart';
 
-// Permission Status Provider
-final permissionStatusProvider = FutureProvider<LocationPermission>((
-  ref,
-) async {
-  return await PermissionService.requestLocationPermission();
-});
+enum SearchField { none, start, destination }
 
-// Current Position Provider
-final currentPositionProvider = FutureProvider<Position>((ref) async {
-  return await PermissionService.getUserCurrentPosition();
-});
-
-// MapState - Tüm UI durumunu tutar
 class MapState {
-  final bool hasPermission;
-  final bool isChecking;
-  final Position? currentPosition;
   final bool isAtCurrentPosition;
-  final List<LatLng> markers;
-  final List<Map<String, dynamic>> searchResults;
-  final String? selectedLocationName;
+  final List<LatLng> markers; 
+  final String? errorMessage;
+  final bool isSearching;
+  final List<LatLng> routePoints;
+
+  // Start point
+  final LatLng? startPoint;
+  final String? startPointName;
+  final bool useCurrentLocationAsStart;
+
+  // Destination
+  final LatLng? destination;
+  final String? destinationName;
+
+  // Search
+  final SearchField activeSearchField;
+  final List<LocationResult> searchResults;
+  final bool hasSearched;
 
   const MapState({
-    this.hasPermission = false,
-    this.isChecking = true,
-    this.currentPosition,
     this.isAtCurrentPosition = true,
     this.markers = const [],
+    this.errorMessage,
+    this.isSearching = false,
+    this.routePoints = const [],
+    this.startPoint,
+    this.startPointName,
+    this.useCurrentLocationAsStart = true,
+    this.destination,
+    this.destinationName,
+    this.activeSearchField = SearchField.none,
     this.searchResults = const [],
-    this.selectedLocationName,
+    this.hasSearched = false,
   });
 
   MapState copyWith({
-    bool? hasPermission,
-    bool? isChecking,
-    Position? currentPosition,
     bool? isAtCurrentPosition,
     List<LatLng>? markers,
-    List<Map<String, dynamic>>? searchResults,
-    String? selectedLocationName,
+    String? errorMessage,
+    bool? isSearching,
+    List<LatLng>? routePoints,
+    LatLng? startPoint,
+    String? startPointName,
+    bool? useCurrentLocationAsStart,
+    LatLng? destination,
+    String? destinationName,
+    SearchField? activeSearchField,
+    List<LocationResult>? searchResults,
+    bool? hasSearched,
+    bool clearError = false,
+    bool clearStartPoint = false,
+    bool clearDestination = false,
   }) {
     return MapState(
-      hasPermission: hasPermission ?? this.hasPermission,
-      isChecking: isChecking ?? this.isChecking,
-      currentPosition: currentPosition ?? this.currentPosition,
       isAtCurrentPosition: isAtCurrentPosition ?? this.isAtCurrentPosition,
       markers: markers ?? this.markers,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      isSearching: isSearching ?? this.isSearching,
+      routePoints: routePoints ?? this.routePoints,
+      startPoint: clearStartPoint ? null : (startPoint ?? this.startPoint),
+      startPointName: clearStartPoint
+          ? null
+          : (startPointName ?? this.startPointName),
+      useCurrentLocationAsStart:
+          useCurrentLocationAsStart ?? this.useCurrentLocationAsStart,
+      destination: clearDestination ? null : (destination ?? this.destination),
+      destinationName: clearDestination
+          ? null
+          : (destinationName ?? this.destinationName),
+      activeSearchField: activeSearchField ?? this.activeSearchField,
       searchResults: searchResults ?? this.searchResults,
-      selectedLocationName: selectedLocationName ?? this.selectedLocationName,
+      hasSearched: hasSearched ?? this.hasSearched,
     );
   }
 }
 
-// MapViewModel - İş mantığını yönetir
 class MapViewModel extends StateNotifier<MapState> {
   final MapRepository _repository;
+  final Ref _ref;
 
-  MapViewModel(Ref ref)
-    : _repository = ref.read(mapRepositoryProvider),
-      super(const MapState()) {
-    _initialize();
-  }
+  MapViewModel(this._ref)
+    : _repository = _ref.read(mapRepositoryProvider),
+      super(const MapState());
 
-  Future<void> _initialize() async {
-    await checkPermission();
-  }
-
-  Future<void> checkPermission() async {
-    final status = await PermissionService.requestLocationPermission();
-
-    final hasPermission =
-        status == LocationPermission.whileInUse ||
-        status == LocationPermission.always;
-
-    if (hasPermission) {
-      await getCurrentPosition();
-    }
-
-    state = state.copyWith(hasPermission: hasPermission, isChecking: false);
-  }
-
-  Future<void> getCurrentPosition() async {
-    final position = await PermissionService.getUserCurrentPosition();
-    state = state.copyWith(currentPosition: position);
-  }
-
-  void onPermissionGranted() {
-    getCurrentPosition();
-    state = state.copyWith(hasPermission: true, isChecking: false);
-  }
-
-  Future<void> searchLocation(String query) async {
+  Future<void> searchLocation(String query, SearchField field) async {
     if (query.length <= 2) {
-      state = state.copyWith(searchResults: []);
+      state = state.copyWith(
+        searchResults: [],
+        clearError: true,
+        hasSearched: false,
+        activeSearchField: field,
+      );
       return;
     }
 
-    final results = await _repository.searchLocation(query);
-    state = state.copyWith(searchResults: results);
+    state = state.copyWith(
+      isSearching: true,
+      clearError: true,
+      activeSearchField: field,
+    );
+
+    final result = await _repository.searchLocation(query);
+
+    if (result.hasError) {
+      state = state.copyWith(
+        searchResults: [],
+        errorMessage: result.error,
+        isSearching: false,
+        hasSearched: true,
+      );
+    } else {
+      state = state.copyWith(
+        searchResults: result.data,
+        isSearching: false,
+        clearError: true,
+        hasSearched: true,
+      );
+    }
   }
 
   void clearSearchResults() {
-    state = state.copyWith(searchResults: []);
+    state = state.copyWith(
+      searchResults: [],
+      clearError: true,
+      hasSearched: false,
+      activeSearchField: SearchField.none,
+    );
   }
 
-  LatLng? selectSearchResult(Map<String, dynamic> result) {
-    final lat = double.parse(result['lat']);
-    final lon = double.parse(result['lon']);
-    final location = LatLng(lat, lon);
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
 
-    if (kDebugMode) {
-      print('Seçilen: ${result['display_name']}');
+  Future<void> fetchRoute() async {
+    final permissionState = _ref.read(permissionViewModelProvider);
+    final currentPosition = permissionState.currentPosition;
+    final destination = state.destination;
+
+    LatLng? start;
+    if (state.useCurrentLocationAsStart && currentPosition != null) {
+      start = LatLng(currentPosition.latitude, currentPosition.longitude);
+    } else {
+      start = state.startPoint;
     }
 
-    // Önceki marker'ları temizle, sadece yeni marker'ı ekle
-    final updatedMarkers = [location];
+    if (start == null || destination == null) {
+      if (kDebugMode) {
+        print('fetchRoute: Başlangıç veya hedef bulunamadı');
+      }
+      return;
+    }
+
+    final result = await _repository.getRoute(start, destination);
+
+    if (result.hasError) {
+      state = state.copyWith(errorMessage: result.error, routePoints: []);
+    } else {
+      state = state.copyWith(routePoints: result.coordinates, clearError: true);
+    }
+  }
+
+  void clearRoute() {
+    state = state.copyWith(routePoints: []);
+  }
+
+  LatLng selectAsStartPoint(LocationResult result) {
+    if (kDebugMode) {
+      print('Başlangıç seçildi: ${result.displayName}');
+    }
+
+    // Mevcut destination marker'ını koru, start marker'ı ekle
+    final updatedMarkers = [
+      result.latLng,
+      if (state.destination != null) state.destination!,
+    ];
 
     state = state.copyWith(
+      startPoint: result.latLng,
+      startPointName: result.displayName,
+      useCurrentLocationAsStart: false,
       markers: updatedMarkers,
       searchResults: [],
-      selectedLocationName: result['display_name'],
+      hasSearched: false,
+      activeSearchField: SearchField.none,
     );
 
-    return location;
+    return result.latLng;
+  }
+
+  LatLng selectAsDestination(LocationResult result) {
+    if (kDebugMode) {
+      print('Varış seçildi: ${result.displayName}');
+    }
+
+    // Mevcut start marker'ını koru, destination ekle
+    final updatedMarkers = [
+      if (state.startPoint != null) state.startPoint!,
+      result.latLng,
+    ];
+
+    state = state.copyWith(
+      destination: result.latLng,
+      destinationName: result.displayName,
+      markers: updatedMarkers,
+      searchResults: [],
+      hasSearched: false,
+      activeSearchField: SearchField.none,
+    );
+
+    return result.latLng;
+  }
+
+  void toggleCurrentLocationAsStart(bool useCurrentLocation) {
+    state = state.copyWith(
+      useCurrentLocationAsStart: useCurrentLocation,
+      clearStartPoint: useCurrentLocation,
+    );
+  }
+
+  void clearStartPoint() {
+    //kullanılmadı
+    state = state.copyWith(
+      clearStartPoint: true,
+      useCurrentLocationAsStart: true,
+    );
+  }
+
+  void clearDestination() {
+    state = state.copyWith(
+      clearDestination: true,
+      routePoints: [],
+      markers: [],
+    );
   }
 
   void setIsAtCurrentPosition(bool value) {
@@ -138,12 +252,13 @@ class MapViewModel extends StateNotifier<MapState> {
   }
 
   void onMapMove(double centerLat, double centerLon) {
-    if (state.currentPosition == null) return;
+    final permissionState = _ref.read(permissionViewModelProvider);
+    if (permissionState.currentPosition == null) return;
 
-    final currentLat = state.currentPosition!.latitude;
-    final currentLon = state.currentPosition!.longitude;
+    final currentLat = permissionState.currentPosition!.latitude;
+    final currentLon = permissionState.currentPosition!.longitude;
 
-    const tolerance = 0.005;
+    const tolerance = AppConstants.positionTolerance;
     final isNear =
         (centerLat - currentLat).abs() < tolerance &&
         (centerLon - currentLon).abs() < tolerance;
@@ -152,13 +267,14 @@ class MapViewModel extends StateNotifier<MapState> {
   }
 
   LatLng? goToCurrentPosition() {
-    if (state.currentPosition == null) return null;
+    final permissionState = _ref.read(permissionViewModelProvider);
+    if (permissionState.currentPosition == null) return null;
 
     state = state.copyWith(isAtCurrentPosition: true);
 
     return LatLng(
-      state.currentPosition!.latitude,
-      state.currentPosition!.longitude,
+      permissionState.currentPosition!.latitude,
+      permissionState.currentPosition!.longitude,
     );
   }
 }
