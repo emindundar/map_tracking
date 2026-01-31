@@ -197,15 +197,25 @@ class _MapViewState extends ConsumerState<MapView>
                     if (currentPosition != null)
                       MarkerLayer(
                         markers: [
+                          // Kullanıcının mevcut konumu - navigasyon aktifse stream'den al
                           Marker(
-                            point: LatLng(
-                              currentPosition.latitude,
-                              currentPosition.longitude,
-                            ),
+                            point:
+                                mapState.isNavigating &&
+                                    mapState.currentPositionStream != null
+                                ? LatLng(
+                                    mapState.currentPositionStream!.latitude,
+                                    mapState.currentPositionStream!.longitude,
+                                  )
+                                : LatLng(
+                                    currentPosition.latitude,
+                                    currentPosition.longitude,
+                                  ),
                             width: 40,
                             height: 40,
-                            child: const Icon(
-                              Icons.my_location,
+                            child: Icon(
+                              mapState.isNavigating
+                                  ? Icons.navigation
+                                  : Icons.my_location,
                               color: Colors.blue,
                               size: 40,
                             ),

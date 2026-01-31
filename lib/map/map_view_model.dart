@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -5,15 +7,18 @@ import 'package:maptracking/map/map_repostory.dart';
 import 'package:maptracking/map/location_result_model.dart';
 import 'package:maptracking/permission/permission_view_model.dart';
 import 'package:maptracking/util/constants.dart';
+import 'package:geolocator/geolocator.dart';
 
 enum SearchField { none, start, destination }
 
 class MapState {
   final bool isAtCurrentPosition;
-  final List<LatLng> markers; 
+  final List<LatLng> markers;
   final String? errorMessage;
   final bool isSearching;
   final List<LatLng> routePoints;
+  final Position? currentPositionStream;
+  final bool isNavigating;
 
   // Start point
   final LatLng? startPoint;
@@ -43,6 +48,8 @@ class MapState {
     this.activeSearchField = SearchField.none,
     this.searchResults = const [],
     this.hasSearched = false,
+    this.currentPositionStream,
+    this.isNavigating = false,
   });
 
   MapState copyWith({
@@ -62,6 +69,8 @@ class MapState {
     bool clearError = false,
     bool clearStartPoint = false,
     bool clearDestination = false,
+    Position? currentPositionStream,
+    bool? isNavigating,
   }) {
     return MapState(
       isAtCurrentPosition: isAtCurrentPosition ?? this.isAtCurrentPosition,
@@ -82,6 +91,9 @@ class MapState {
       activeSearchField: activeSearchField ?? this.activeSearchField,
       searchResults: searchResults ?? this.searchResults,
       hasSearched: hasSearched ?? this.hasSearched,
+      currentPositionStream:
+          currentPositionStream ?? this.currentPositionStream,
+      isNavigating: isNavigating ?? this.isNavigating,
     );
   }
 }
@@ -89,10 +101,17 @@ class MapState {
 class MapViewModel extends StateNotifier<MapState> {
   final MapRepository _repository;
   final Ref _ref;
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   MapViewModel(this._ref)
     : _repository = _ref.read(mapRepositoryProvider),
       super(const MapState());
+
+  @override
+  void dispose() {
+    _stopPositionStream();
+    super.dispose();
+  }
 
   Future<void> searchLocation(String query, SearchField field) async {
     if (query.length <= 2) {
@@ -180,7 +199,6 @@ class MapViewModel extends StateNotifier<MapState> {
       print('Başlangıç seçildi: ${result.displayName}');
     }
 
-    // Mevcut destination marker'ını koru, start marker'ı ekle
     final updatedMarkers = [
       result.latLng,
       if (state.destination != null) state.destination!,
@@ -204,7 +222,6 @@ class MapViewModel extends StateNotifier<MapState> {
       print('Varış seçildi: ${result.displayName}');
     }
 
-    // Mevcut start marker'ını koru, destination ekle
     final updatedMarkers = [
       if (state.startPoint != null) state.startPoint!,
       result.latLng,
@@ -276,6 +293,64 @@ class MapViewModel extends StateNotifier<MapState> {
       permissionState.currentPosition!.latitude,
       permissionState.currentPosition!.longitude,
     );
+  }
+
+  /// Navigasyonu başlatır ve konum stream'ini aktif eder
+  void startNavigation() {
+    if (state.isNavigating) return;
+
+    state = state.copyWith(isNavigating: true);
+    _startPositionStream();
+
+    if (kDebugMode) {
+      print('Navigasyon başlatıldı, konum stream aktif');
+    }
+  }
+
+  /// Navigasyonu durdurur ve konum stream'ini kapatır (pil optimizasyonu)
+  void stopNavigation() {
+    if (!state.isNavigating) return;
+
+    _stopPositionStream();
+    state = state.copyWith(isNavigating: false, currentPositionStream: null);
+
+    if (kDebugMode) {
+      print('Navigasyon durduruldu, konum stream kapatıldı');
+    }
+  }
+
+  /// Konum stream'ini başlatır
+  void _startPositionStream() {
+    _positionStreamSubscription?.cancel();
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+      //süre bazlı güncelleme eklenebilir
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            state = state.copyWith(currentPositionStream: position);
+
+            if (kDebugMode) {
+              print('Yeni konum: ${position.latitude}, ${position.longitude}');
+            }
+          },
+          onError: (error) {
+            if (kDebugMode) {
+              print('Konum stream hatası: $error');
+            }
+            state = state.copyWith(errorMessage: 'Konum alınamadı: $error');
+          },
+        );
+  }
+
+  /// Konum stream'ini durdurur
+  void _stopPositionStream() {
+    _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = null;
   }
 }
 
