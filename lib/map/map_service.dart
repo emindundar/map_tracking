@@ -31,7 +31,7 @@ class RouteResult {
   bool get hasError => error != null;
 }
 
-class MapRepository {
+class MapService {
   Future<SearchResult> searchLocation(String query, {int? limit}) async {
     if (query.isEmpty) return SearchResult(data: []);
 
@@ -68,7 +68,7 @@ class MapRepository {
       return SearchResult(data: [], error: AppStrings.searchError);
     }
   }
-//kullanmayı unutma
+
   Future<RouteResult> getRoute(LatLng start, LatLng destination) async {
     final url = Uri.parse(
       '${AppConstants.osrmBaseUrl}/route/v1/driving/'
@@ -131,6 +131,6 @@ class MapRepository {
   }
 }
 
-final mapRepositoryProvider = Provider<MapRepository>((ref) {
-  return MapRepository();
+final mapServiceProvider = Provider<MapService>((ref) {
+  return MapService();
 });

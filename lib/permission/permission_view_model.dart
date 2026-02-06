@@ -1,18 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:maptracking/permission/permission_repostory.dart';
+import 'package:maptracking/permission/permission_service.dart';
 import 'package:maptracking/util/constants.dart';
 
 // Permission Status Provider
 final permissionStatusProvider = FutureProvider<LocationPermission>((
   ref,
 ) async {
-  return await PermissionService.requestLocationPermission();
+  final permissionService = ref.read(permissionServiceProvider);
+  return await permissionService.requestLocationPermission();
 });
 
 // Current Position Provider
 final currentPositionProvider = FutureProvider<Position>((ref) async {
-  return await PermissionService.getUserCurrentPosition();
+  final permissionService = ref.read(permissionServiceProvider);
+  return await permissionService.getUserCurrentPosition();
 });
 
 // PermissionState
@@ -50,7 +52,10 @@ class PermissionState {
 
 // PermissionViewModel
 class PermissionViewModel extends StateNotifier<PermissionState> {
-  PermissionViewModel() : super(const PermissionState()) {
+  final PermissionService _permissionService;
+
+  PermissionViewModel(this._permissionService)
+    : super(const PermissionState()) {
     _initialize();
   }
 
@@ -64,7 +69,7 @@ class PermissionViewModel extends StateNotifier<PermissionState> {
       permissionMessage: AppStrings.checkingPermission,
     );
 
-    final status = await PermissionService.requestLocationPermission();
+    final status = await _permissionService.requestLocationPermission();
 
     final checkHasPermission =
         status == LocationPermission.whileInUse ||
@@ -97,7 +102,7 @@ class PermissionViewModel extends StateNotifier<PermissionState> {
   }
 
   Future<void> getCurrentPosition() async {
-    final position = await PermissionService.getUserCurrentPosition();
+    final position = await _permissionService.getUserCurrentPosition();
     state = state.copyWith(currentPosition: position);
   }
 
@@ -110,5 +115,6 @@ class PermissionViewModel extends StateNotifier<PermissionState> {
 // PermissionViewModel Provider
 final permissionViewModelProvider =
     StateNotifierProvider<PermissionViewModel, PermissionState>((ref) {
-      return PermissionViewModel();
+      final permissionService = ref.read(permissionServiceProvider);
+      return PermissionViewModel(permissionService);
     });

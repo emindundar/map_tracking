@@ -60,6 +60,16 @@ class AppStrings {
   static const String noRouteError =
       'Navigasyon başlatılamadı. Önce bir rota oluşturun.';
 
+  // Auth Messages
+  static const String authInvalidCredentials = 'E-posta veya şifre hatalı.';
+  static const String authNetworkError =
+      'İnternet bağlantısı yok. Lütfen tekrar deneyin.';
+  static const String authServerError =
+      'Sunucu hatası. Lütfen daha sonra tekrar deneyin.';
+  static const String authTokenMissing = 'Oturum tokenı alınamadı.';
+  static const String authUnexpectedError =
+      'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.';
+
   // Attribution
   static const String openStreetMapAttribution = 'OpenStreetMap contributors';
 }

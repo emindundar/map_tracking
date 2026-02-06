@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
@@ -6,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maptracking/map/map_view_model.dart';
 import 'package:maptracking/map/location_result_model.dart';
+import 'package:maptracking/map/widgets/map_search_widgets.dart';
 import 'package:maptracking/permission/permission_view.dart';
 import 'package:maptracking/permission/permission_view_model.dart';
 import 'package:maptracking/util/constants.dart';
@@ -23,7 +23,6 @@ class _MapViewState extends ConsumerState<MapView>
   late final AnimatedMapController _animatedMapController;
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
-  Timer? _debounce;
 
   @override
   void initState() {
@@ -38,26 +37,19 @@ class _MapViewState extends ConsumerState<MapView>
     _animatedMapController.dispose();
     _startController.dispose();
     _destinationController.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
   void _onStartSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      ref
-          .read(mapViewModelProvider.notifier)
-          .searchLocation(query, SearchField.start);
-    });
+    ref
+        .read(mapViewModelProvider.notifier)
+        .onSearchQueryChanged(query, SearchField.start);
   }
 
   void _onDestinationSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      ref
-          .read(mapViewModelProvider.notifier)
-          .searchLocation(query, SearchField.destination);
-    });
+    ref
+        .read(mapViewModelProvider.notifier)
+        .onSearchQueryChanged(query, SearchField.destination);
   }
 
   void _onStartResultSelected(LocationResult result) {
@@ -67,7 +59,6 @@ class _MapViewState extends ConsumerState<MapView>
     _startController.text = result.displayName;
     _animatedMapController.animateTo(dest: location, zoom: 15);
     FocusScope.of(context).unfocus();
-    _tryFetchRoute();
   }
 
   void _onDestinationResultSelected(LocationResult result) {
@@ -77,31 +68,12 @@ class _MapViewState extends ConsumerState<MapView>
     _destinationController.text = result.displayName;
     _animatedMapController.animateTo(dest: location, zoom: 15);
     FocusScope.of(context).unfocus();
-    _tryFetchRoute();
-  }
-
-  void _tryFetchRoute() {
-    final mapState = ref.read(mapViewModelProvider);
-    final permissionState = ref.read(permissionViewModelProvider);
-
-    // Start point belirlendi mi?
-    final hasStart = mapState.useCurrentLocationAsStart
-        ? permissionState.currentPosition != null
-        : mapState.startPoint != null;
-
-    // Destination belirlendi mi?
-    final hasDestination = mapState.destination != null;
-
-    if (hasStart && hasDestination) {
-      ref.read(mapViewModelProvider.notifier).fetchRoute();
-    }
   }
 
   void _useCurrentLocationAsStart() {
     ref.read(mapViewModelProvider.notifier).toggleCurrentLocationAsStart(true);
     _startController.text = AppStrings.currentLocation;
     ref.read(mapViewModelProvider.notifier).clearSearchResults();
-    _tryFetchRoute();
   }
 
   void _startNavigation() {
@@ -316,197 +288,18 @@ class _MapViewState extends ConsumerState<MapView>
               ),
             ],
           ),
-          // Arama alanları
-          Positioned(
-            top: 16,
-            left: 16,
-            right: 16,
-            child: Column(
-              children: [
-                // Arama kutuları container
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(blurRadius: 10, color: Colors.black12),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      children: [
-                        // Başlangıç noktası
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.trip_origin,
-                              color: Colors.green,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _startController,
-                                textInputAction: TextInputAction.search,
-                                onChanged: _onStartSearchChanged,
-                                onTap: () {
-                                  if (_startController.text ==
-                                      AppStrings.currentLocation) {
-                                    _startController.clear();
-                                  }
-                                },
-                                decoration: InputDecoration(
-                                  hintText: AppStrings.startPointHint,
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  suffixIcon: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (_startController.text.isNotEmpty &&
-                                          _startController.text !=
-                                              AppStrings.currentLocation)
-                                        IconButton(
-                                          icon: Icon(Icons.clear, size: 20),
-                                          onPressed: () {
-                                            _startController.clear();
-                                            _useCurrentLocationAsStart();
-                                          },
-                                        ),
-                                      IconButton(
-                                        icon: Icon(
-                                          Icons.my_location,
-                                          size: 20,
-                                          color: Colors.blue,
-                                        ),
-                                        onPressed: _useCurrentLocationAsStart,
-                                        tooltip: AppStrings.currentLocation,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 1),
-                        // Varış noktası
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on,
-                              color: Colors.red,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _destinationController,
-                                textInputAction: TextInputAction.search,
-                                onChanged: _onDestinationSearchChanged,
-                                decoration: InputDecoration(
-                                  hintText: AppStrings.destinationHint,
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  suffixIcon:
-                                      _destinationController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: Icon(Icons.clear, size: 20),
-                                          onPressed: () {
-                                            _destinationController.clear();
-                                            ref
-                                                .read(
-                                                  mapViewModelProvider.notifier,
-                                                )
-                                                .clearDestination();
-                                          },
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Arama sonuçları
-                if (mapState.searchResults.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(blurRadius: 10, color: Colors.black12),
-                      ],
-                    ),
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: mapState.searchResults.length,
-                      itemBuilder: (context, index) {
-                        final result = mapState.searchResults[index];
-                        return ListTile(
-                          leading: Icon(
-                            mapState.activeSearchField == SearchField.start
-                                ? Icons.trip_origin
-                                : Icons.location_on,
-                            color:
-                                mapState.activeSearchField == SearchField.start
-                                ? Colors.green
-                                : Colors.red,
-                          ),
-                          title: Text(
-                            result.displayName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          onTap: () {
-                            if (mapState.activeSearchField ==
-                                SearchField.start) {
-                              _onStartResultSelected(result);
-                            } else {
-                              _onDestinationResultSelected(result);
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  )
-                else if (mapState.hasSearched &&
-                    mapState.searchResults.isEmpty &&
-                    !mapState.isSearching)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(blurRadius: 10, color: Colors.black12),
-                      ],
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.search_off, color: Colors.grey),
-                        SizedBox(width: 12),
-                        Text(
-                          AppStrings.noResultsFound,
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+          MapSearchWidgets(
+            startController: _startController,
+            destinationController: _destinationController,
+            mapState: mapState,
+            onStartSearchChanged: _onStartSearchChanged,
+            onDestinationSearchChanged: _onDestinationSearchChanged,
+            onStartResultSelected: _onStartResultSelected,
+            onDestinationResultSelected: _onDestinationResultSelected,
+            onUseCurrentLocationAsStart: _useCurrentLocationAsStart,
+            onClearDestination: () {
+              ref.read(mapViewModelProvider.notifier).clearDestination();
+            },
           ),
         ],
       ),

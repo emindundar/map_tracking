@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StorageService {
@@ -22,3 +23,7 @@ class StorageService {
     await _storage.delete(key: 'jwt_token');
   }
 }
+
+final storageServiceProvider = Provider<StorageService>((ref) {
+  return StorageService();
+});

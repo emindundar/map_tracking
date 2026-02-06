@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:maptracking/map/map_repostory.dart';
+import 'package:maptracking/map/map_service.dart';
 import 'package:maptracking/map/location_result_model.dart';
 import 'package:maptracking/permission/permission_view_model.dart';
 import 'package:maptracking/util/constants.dart';
@@ -99,22 +99,40 @@ class MapState {
 }
 
 class MapViewModel extends StateNotifier<MapState> {
-  final MapRepository _repository;
+  final MapService _service;
   final Ref _ref;
   StreamSubscription<Position>? _positionStreamSubscription;
+  Timer? _searchDebounce;
 
   MapViewModel(this._ref)
-    : _repository = _ref.read(mapRepositoryProvider),
+    : _service = _ref.read(mapServiceProvider),
       super(const MapState());
 
   @override
   void dispose() {
     _stopPositionStream();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
+  void onSearchQueryChanged(String query, SearchField field) {
+    _searchDebounce?.cancel();
+
+    if (query.length <= AppConstants.minSearchQueryLength) {
+      unawaited(searchLocation(query, field));
+      return;
+    }
+
+    _searchDebounce = Timer(
+      const Duration(milliseconds: AppConstants.searchDebounceMs),
+      () {
+        unawaited(searchLocation(query, field));
+      },
+    );
+  }
+
   Future<void> searchLocation(String query, SearchField field) async {
-    if (query.length <= 2) {
+    if (query.length <= AppConstants.minSearchQueryLength) {
       state = state.copyWith(
         searchResults: [],
         clearError: true,
@@ -130,7 +148,7 @@ class MapViewModel extends StateNotifier<MapState> {
       activeSearchField: field,
     );
 
-    final result = await _repository.searchLocation(query);
+    final result = await _service.searchLocation(query);
 
     if (result.hasError) {
       state = state.copyWith(
@@ -181,7 +199,7 @@ class MapViewModel extends StateNotifier<MapState> {
       return;
     }
 
-    final result = await _repository.getRoute(start, destination);
+    final result = await _service.getRoute(start, destination);
 
     if (result.hasError) {
       state = state.copyWith(errorMessage: result.error, routePoints: []);
@@ -214,6 +232,7 @@ class MapViewModel extends StateNotifier<MapState> {
       activeSearchField: SearchField.none,
     );
 
+    _tryFetchRouteIfReady();
     return result.latLng;
   }
 
@@ -236,6 +255,7 @@ class MapViewModel extends StateNotifier<MapState> {
       activeSearchField: SearchField.none,
     );
 
+    _tryFetchRouteIfReady();
     return result.latLng;
   }
 
@@ -244,6 +264,8 @@ class MapViewModel extends StateNotifier<MapState> {
       useCurrentLocationAsStart: useCurrentLocation,
       clearStartPoint: useCurrentLocation,
     );
+
+    _tryFetchRouteIfReady();
   }
 
   void clearStartPoint() {
@@ -260,6 +282,20 @@ class MapViewModel extends StateNotifier<MapState> {
       routePoints: [],
       markers: [],
     );
+  }
+
+  void _tryFetchRouteIfReady() {
+    final permissionState = _ref.read(permissionViewModelProvider);
+
+    final hasStart = state.useCurrentLocationAsStart
+        ? permissionState.currentPosition != null
+        : state.startPoint != null;
+
+    final hasDestination = state.destination != null;
+
+    if (hasStart && hasDestination) {
+      fetchRoute();
+    }
   }
 
   void setIsAtCurrentPosition(bool value) {
