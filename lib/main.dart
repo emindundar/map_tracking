@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'map/map_view.dart';
+import 'package:maptracking/auth/register_view.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -17,8 +17,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        scaffoldBackgroundColor: Colors.white,
       ),
-      home: const MapView(),
+      home: const RegisterView(),
     );
   }
 }

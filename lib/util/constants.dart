@@ -70,6 +70,20 @@ class AppStrings {
   static const String authUnexpectedError =
       'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.';
 
+  // Auth Labels
+  static const String emailLabel = 'Email';
+  static const String passwordLabel = 'Password';
+  static const String repeatPasswordLabel = 'Repeat Password';
+  static const String registerButton = 'Register';
+  static const String alreadyHaveAccount = 'I have account? ';
+  static const String loginAction = 'Log in';
+
+  // Auth Validation
+  static const String emailRequired = 'Email zorunludur.';
+  static const String passwordRequired = 'Şifre zorunludur.';
+  static const String passwordMinLength = 'Şifre en az 6 karakter olmalıdır.';
+  static const String passwordMismatch = 'Şifreler eşleşmiyor.';
+
   // Attribution
   static const String openStreetMapAttribution = 'OpenStreetMap contributors';
 }
