@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lottie/lottie.dart';
 import 'package:maptracking/auth/auth_view_model.dart';
 import 'package:maptracking/core/widgets/widgets.dart';
+import 'package:maptracking/map/map_view.dart';
 import 'package:maptracking/util/constants.dart';
 
 class RegisterView extends ConsumerStatefulWidget {
@@ -44,6 +45,14 @@ class _RegisterViewState extends ConsumerState<RegisterView> {
                 backgroundColor: Theme.of(context).colorScheme.error,
                 behavior: SnackBarBehavior.floating,
               ),
+            );
+          }
+        });
+      } else if (next.token != null && previous?.token == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MapView()),
             );
           }
         });

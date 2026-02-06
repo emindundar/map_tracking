@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:maptracking/auth/user_models.dart';
 import 'package:maptracking/core/init/storage/storage_service.dart';
 import 'package:maptracking/util/constants.dart';
 
@@ -22,12 +23,18 @@ class AuthFailure {
 class AuthResult {
   final bool isSuccess;
   final String? token;
+  final UserModel? user;
   final AuthFailure? failure;
 
-  const AuthResult._({required this.isSuccess, this.token, this.failure});
+  const AuthResult._({
+    required this.isSuccess,
+    this.token,
+    this.user,
+    this.failure,
+  });
 
-  const AuthResult.success(String token)
-    : this._(isSuccess: true, token: token);
+  factory AuthResult.success(String token, {UserModel? user}) =>
+      AuthResult._(isSuccess: true, token: token, user: user);
 
   const AuthResult.failure(AuthFailure failure)
     : this._(isSuccess: false, failure: failure);
@@ -49,28 +56,34 @@ class AuthService {
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final authResponse = AuthResponseModel.fromJson(data);
 
-        final token = data['accessToken'];
-
-        if (token is String && token.isNotEmpty) {
-          await _storageService.saveToken(token);
-          return AuthResult.success(token);
+        if (authResponse.success && authResponse.token != null) {
+          await _storageService.saveToken(authResponse.token!);
+          return AuthResult.success(
+            authResponse.token!,
+            user: authResponse.user,
+          );
         }
 
-        return const AuthResult.failure(
+        // success: false veya token yok
+        return AuthResult.failure(
           AuthFailure(
             AuthFailureType.tokenMissing,
-            AppStrings.authTokenMissing,
+            authResponse.message.isNotEmpty
+                ? authResponse.message
+                : AppStrings.authTokenMissing,
           ),
         );
       }
 
       if (response.statusCode == 400 || response.statusCode == 401) {
-        return const AuthResult.failure(
+        final message = _extractMessage(response.body);
+        return AuthResult.failure(
           AuthFailure(
             AuthFailureType.invalidCredentials,
-            AppStrings.authInvalidCredentials,
+            message ?? AppStrings.authInvalidCredentials,
           ),
         );
       }
@@ -93,6 +106,10 @@ class AuthService {
     }
   }
 
+  Future<String?> getSavedToken() async {
+    return _storageService.getToken();
+  }
+
   String? _extractMessage(String body) {
     try {
       final decoded = jsonDecode(body);
@@ -110,4 +127,9 @@ class AuthService {
 final authServiceProvider = Provider<AuthService>((ref) {
   final storageService = ref.read(storageServiceProvider);
   return AuthService(storageService);
+});
+
+final authTokenProvider = FutureProvider<String?>((ref) async {
+  final authService = ref.read(authServiceProvider);
+  return authService.getSavedToken();
 });
