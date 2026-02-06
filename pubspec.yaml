@@ -21,6 +21,8 @@ dependencies:
   http: ^1.6.0
   # State Management
   flutter_riverpod: ^2.6.1
+  # kullanıcı bilgilerini cacheleme
+  flutter_secure_storage: ^10.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

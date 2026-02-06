@@ -295,19 +295,66 @@ class MapViewModel extends StateNotifier<MapState> {
     );
   }
 
-  /// Navigasyonu başlatır ve konum stream'ini aktif eder
-  void startNavigation() {
-    if (state.isNavigating) return;
+  bool startNavigation() {
+    if (state.isNavigating) return true;
 
+    // Rota var mı kontrol et
+    if (state.routePoints.isEmpty) {
+      state = state.copyWith(errorMessage: AppStrings.noRouteError);
+      return false;
+    }
+
+    // Mevcut konumu al
+    final permissionState = _ref.read(permissionViewModelProvider);
+    final currentPosition = permissionState.currentPosition;
+
+    if (currentPosition == null) {
+      state = state.copyWith(errorMessage: AppStrings.navigationStartError);
+      return false;
+    }
+
+    // Başlangıç noktasını belirle
+    LatLng startPoint;
+    if (state.useCurrentLocationAsStart) {
+      startPoint = LatLng(currentPosition.latitude, currentPosition.longitude);
+    } else if (state.startPoint != null) {
+      startPoint = state.startPoint!;
+    } else {
+      state = state.copyWith(errorMessage: AppStrings.navigationStartError);
+      return false;
+    }
+
+    final distanceInMeters = Geolocator.distanceBetween(
+      currentPosition.latitude,
+      currentPosition.longitude,
+      startPoint.latitude,
+      startPoint.longitude,
+    );
+
+    // Tolerans kontrolü
+    if (distanceInMeters > AppConstants.navigationStartToleranceMeters) {
+      if (kDebugMode) {
+        print(
+          'Başlangıç noktasına mesafe: ${distanceInMeters.toStringAsFixed(0)}m - çok uzak',
+        );
+      }
+      state = state.copyWith(errorMessage: AppStrings.navigationStartError);
+      return false;
+    }
+
+    // Navigasyonu başlat
     state = state.copyWith(isNavigating: true);
     _startPositionStream();
 
     if (kDebugMode) {
-      print('Navigasyon başlatıldı, konum stream aktif');
+      print(
+        'Navigasyon başlatıldı, mesafe: ${distanceInMeters.toStringAsFixed(0)}m',
+      );
     }
+
+    return true;
   }
 
-  /// Navigasyonu durdurur ve konum stream'ini kapatır (pil optimizasyonu)
   void stopNavigation() {
     if (!state.isNavigating) return;
 
@@ -319,7 +366,6 @@ class MapViewModel extends StateNotifier<MapState> {
     }
   }
 
-  /// Konum stream'ini başlatır
   void _startPositionStream() {
     _positionStreamSubscription?.cancel();
 
@@ -347,14 +393,12 @@ class MapViewModel extends StateNotifier<MapState> {
         );
   }
 
-  /// Konum stream'ini durdurur
   void _stopPositionStream() {
     _positionStreamSubscription?.cancel();
     _positionStreamSubscription = null;
   }
 }
 
-// MapViewModel Provider
 final mapViewModelProvider = StateNotifierProvider<MapViewModel, MapState>((
   ref,
 ) {

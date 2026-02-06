@@ -9,13 +9,16 @@ class AppConstants {
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const String openStreetMapCopyright =
       'https://openstreetmap.org/copyright';
+  static const String authBaseUrl = 'http://localhost:3000/api';
 
   // User Agent
   static const String userAgentPackageName = 'com.emindundar.maptracking';
 
   // Map Defaults
   static const double defaultZoom = 15.0;
+  static const double navigationZoom = 18.0;
   static const double positionTolerance = 0.005;
+  static const double navigationStartToleranceMeters = 50.0;
 
   // Search
   static const int searchLimit = 3;
@@ -52,6 +55,10 @@ class AppStrings {
   static const String searchError =
       'Arama yapılamadı, internet bağlantınızı kontrol edin.';
   static const String routeError = 'Rota alınamadı, lütfen tekrar deneyin.';
+  static const String navigationStartError =
+      'Navigasyon başlatılamadı. Başlangıç noktasına yaklaşın.';
+  static const String noRouteError =
+      'Navigasyon başlatılamadı. Önce bir rota oluşturun.';
 
   // Attribution
   static const String openStreetMapAttribution = 'OpenStreetMap contributors';

@@ -104,12 +104,39 @@ class _MapViewState extends ConsumerState<MapView>
     _tryFetchRoute();
   }
 
+  void _startNavigation() {
+    final success = ref.read(mapViewModelProvider.notifier).startNavigation();
+
+    if (success) {
+      final permissionState = ref.read(permissionViewModelProvider);
+      final currentPosition = permissionState.currentPosition;
+
+      if (currentPosition != null) {
+        _animatedMapController.animateTo(
+          dest: LatLng(currentPosition.latitude, currentPosition.longitude),
+          zoom: AppConstants.navigationZoom,
+          rotation: 0, // Kuzeye kilitle
+        );
+      }
+    }
+  }
+
+  void _stopNavigation() {
+    ref.read(mapViewModelProvider.notifier).stopNavigation();
+
+    // Zoom'u normale döndür
+    _animatedMapController.animatedZoomTo(AppConstants.defaultZoom);
+  }
+
   void _goToCurrentPosition() {
     final location = ref
         .read(mapViewModelProvider.notifier)
         .goToCurrentPosition();
     if (location != null) {
-      _animatedMapController.animateTo(dest: location, zoom: 15);
+      _animatedMapController.animateTo(
+        dest: location,
+        zoom: AppConstants.defaultZoom,
+      );
     }
   }
 
@@ -171,6 +198,22 @@ class _MapViewState extends ConsumerState<MapView>
               ),
             );
           }
+        });
+      }
+
+      // Navigasyon aktifken konum değiştiğinde haritayı takip et
+      if (next.isNavigating &&
+          next.currentPositionStream != null &&
+          previous?.currentPositionStream != next.currentPositionStream) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _animatedMapController.animateTo(
+            dest: LatLng(
+              next.currentPositionStream!.latitude,
+              next.currentPositionStream!.longitude,
+            ),
+            zoom: AppConstants.navigationZoom,
+            rotation: 0, // Kuzeye kilitli
+          );
         });
       }
     });
@@ -468,8 +511,25 @@ class _MapViewState extends ConsumerState<MapView>
         ],
       ),
       floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Navigasyon başlat/durdur butonu (rota varsa göster)
+          if (mapState.routePoints.isNotEmpty)
+            FloatingActionButton(
+              heroTag: 'navigation',
+              backgroundColor: mapState.isNavigating
+                  ? Colors.red
+                  : Colors.green,
+              onPressed: mapState.isNavigating
+                  ? _stopNavigation
+                  : _startNavigation,
+              child: Icon(
+                mapState.isNavigating ? Icons.stop : Icons.navigation,
+                color: Colors.white,
+              ),
+            ),
+          if (mapState.routePoints.isNotEmpty) const SizedBox(height: 8),
           FloatingActionButton(
             heroTag: 'zoomIn',
             mini: true,
@@ -484,7 +544,7 @@ class _MapViewState extends ConsumerState<MapView>
             child: const Icon(Icons.remove),
           ),
           const SizedBox(height: 8),
-          if (!mapState.isAtCurrentPosition)
+          if (!mapState.isAtCurrentPosition && !mapState.isNavigating)
             FloatingActionButton(
               heroTag: 'currentLocation',
               onPressed: _goToCurrentPosition,
