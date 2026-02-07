@@ -106,6 +106,64 @@ class AuthService {
     }
   }
 
+  Future<AuthResult> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConstants.authBaseUrl}/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final authResponse = AuthResponseModel.fromJson(data);
+
+        if (authResponse.success && authResponse.token != null) {
+          await _storageService.saveToken(authResponse.token!);
+          return AuthResult.success(
+            authResponse.token!,
+            user: authResponse.user,
+          );
+        }
+
+        return AuthResult.failure(
+          AuthFailure(
+            AuthFailureType.tokenMissing,
+            authResponse.message.isNotEmpty
+                ? authResponse.message
+                : AppStrings.authTokenMissing,
+          ),
+        );
+      }
+
+      if (response.statusCode == 400 || response.statusCode == 401) {
+        final message = _extractMessage(response.body);
+        return AuthResult.failure(
+          AuthFailure(
+            AuthFailureType.invalidCredentials,
+            message ?? AppStrings.authInvalidCredentials,
+          ),
+        );
+      }
+
+      final message = _extractMessage(response.body);
+      return AuthResult.failure(
+        AuthFailure(
+          AuthFailureType.server,
+          message ?? AppStrings.authServerError,
+        ),
+      );
+    } on http.ClientException {
+      return const AuthResult.failure(
+        AuthFailure(AuthFailureType.network, AppStrings.authNetworkError),
+      );
+    } catch (_) {
+      return const AuthResult.failure(
+        AuthFailure(AuthFailureType.unknown, AppStrings.authUnexpectedError),
+      );
+    }
+  }
+
   Future<String?> getSavedToken() async {
     return _storageService.getToken();
   }
