@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maptracking/core/widgets/widgets.dart';
 import 'package:maptracking/permission/permission_view_model.dart';
@@ -22,10 +21,7 @@ class PermissionView extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (permissionState.isChecking) ...[
-                SpinKitWave(
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 40,
-                ),
+                const CustomProgressBar(size: 40),
                 const SizedBox(height: 16),
               ],
               Text(

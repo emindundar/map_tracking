@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:maptracking/core/widgets/custom_progress_bar.dart';
 
 class CustomButton extends StatelessWidget {
   final String text;
@@ -43,9 +43,9 @@ class CustomButton extends StatelessWidget {
       return ElevatedButton(
         onPressed: null,
         style: style,
-        child: SpinKitWave(
+        child: CustomProgressBar(
+          size: 18,
           color: Theme.of(context).colorScheme.onPrimary,
-          size: 20,
         ),
       );
     }

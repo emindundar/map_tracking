@@ -49,6 +49,24 @@ class AuthViewModel extends StateNotifier<AuthState> {
     return false;
   }
 
+  Future<bool> login(String email, String password) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    final result = await _authService.login(email, password);
+
+    if (result.isSuccess) {
+      state = state.copyWith(isLoading: false, token: result.token);
+      return true;
+    }
+
+    state = state.copyWith(
+      isLoading: false,
+      errorMessage: result.errorMessage,
+    );
+
+    return false;
+  }
+
   void clearError() {
     state = state.copyWith(clearError: true);
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maptracking/auth/auth_service.dart';
 import 'package:maptracking/auth/register_view.dart';
+import 'package:maptracking/core/widgets/widgets.dart';
 import 'package:maptracking/map/map_view.dart';
 
 void main() {
@@ -41,7 +42,7 @@ class AuthGate extends ConsumerWidget {
         return const RegisterView();
       },
       loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: CustomProgressBar()),
       ),
       error: (_, __) => const RegisterView(),
     );

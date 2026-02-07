@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:maptracking/core/widgets/widgets.dart';
 import 'package:maptracking/map/map_view_model.dart';
 import 'package:maptracking/map/location_result_model.dart';
 import 'package:maptracking/map/widgets/map_search_widgets.dart';
@@ -136,7 +137,7 @@ class _MapViewState extends ConsumerState<MapView>
 
     // İzinler kontrol ediliyor
     if (permissionState.isChecking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CustomProgressBar()));
     }
 
     // İzin verilmemiş

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lottie/lottie.dart';
 import 'package:maptracking/auth/auth_view_model.dart';
+import 'package:maptracking/auth/login_view.dart';
 import 'package:maptracking/core/widgets/widgets.dart';
 import 'package:maptracking/map/map_view.dart';
 import 'package:maptracking/util/constants.dart';
@@ -142,7 +143,8 @@ class _RegisterViewState extends ConsumerState<RegisterView> {
                       ),
                       onPressed: () {
                         setState(
-                          () => _obscureRepeatPassword = !_obscureRepeatPassword,
+                          () =>
+                              _obscureRepeatPassword = !_obscureRepeatPassword,
                         );
                       },
                     ),
@@ -179,6 +181,8 @@ class _RegisterViewState extends ConsumerState<RegisterView> {
   }
 
   void _onLoginTap() {
-    // TODO: Navigate to login page
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginView()));
   }
 }
