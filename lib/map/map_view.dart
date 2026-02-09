@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
@@ -6,7 +7,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:maptracking/core/widgets/widgets.dart';
 import 'package:maptracking/map/map_view_model.dart';
 import 'package:maptracking/map/location_result_model.dart';
-import 'package:maptracking/map/widgets/map_search_widgets.dart';
+import 'package:maptracking/map/widgets/map_control_stack.dart';
+import 'package:maptracking/map/widgets/map_search_bar.dart';
+import 'package:maptracking/map/widgets/map_search_sheet.dart';
+import 'package:maptracking/map/widgets/route_summary_card.dart';
 import 'package:maptracking/permission/permission_view.dart';
 import 'package:maptracking/permission/permission_view_model.dart';
 import 'package:maptracking/util/constants.dart';
@@ -191,112 +195,140 @@ class _MapViewState extends ConsumerState<MapView>
       }
     });
 
+    final screenHeight = MediaQuery.of(context).size.height;
+    final sheetVisible =
+        mapState.isSearching ||
+        mapState.searchResults.isNotEmpty ||
+        mapState.hasSearched;
+    final estimatedSheetHeight = sheetVisible
+        ? _estimateSheetHeight(context, mapState)
+        : 0.0;
+    final overlayBottom =
+        sheetVisible ? estimatedSheetHeight + 16.0 : 24.0;
+
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.mapTitle)),
       body: Stack(
         children: [
-          Column(
+          FlutterMap(
+            mapController: _animatedMapController.mapController,
+            options: MapOptions(
+              initialCenter: initialCenter,
+              initialZoom: AppConstants.defaultZoom,
+              onPositionChanged: _onMapMove,
+            ),
             children: [
-              Expanded(
-                child: FlutterMap(
-                  mapController: _animatedMapController.mapController,
-                  options: MapOptions(
-                    initialCenter: initialCenter,
-                    initialZoom: AppConstants.defaultZoom,
-                    onPositionChanged: _onMapMove,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: AppConstants.openStreetMapTileUrl,
-                      userAgentPackageName: AppConstants.userAgentPackageName,
+              TileLayer(
+                urlTemplate: AppConstants.openStreetMapTileUrl,
+                userAgentPackageName: AppConstants.userAgentPackageName,
+              ),
+              if (currentPosition != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point:
+                          mapState.isNavigating &&
+                              mapState.currentPositionStream != null
+                          ? LatLng(
+                              mapState.currentPositionStream!.latitude,
+                              mapState.currentPositionStream!.longitude,
+                            )
+                          : LatLng(
+                              currentPosition.latitude,
+                              currentPosition.longitude,
+                            ),
+                      width: 40,
+                      height: 40,
+                      child: Icon(
+                        mapState.isNavigating
+                            ? Icons.navigation
+                            : Icons.my_location,
+                        color: Colors.blue,
+                        size: 38,
+                      ),
                     ),
-                    if (currentPosition != null)
-                      MarkerLayer(
-                        markers: [
-                          // Kullanıcının mevcut konumu - navigasyon aktifse stream'den al
-                          Marker(
-                            point:
-                                mapState.isNavigating &&
-                                    mapState.currentPositionStream != null
-                                ? LatLng(
-                                    mapState.currentPositionStream!.latitude,
-                                    mapState.currentPositionStream!.longitude,
-                                  )
-                                : LatLng(
-                                    currentPosition.latitude,
-                                    currentPosition.longitude,
-                                  ),
-                            width: 40,
-                            height: 40,
-                            child: Icon(
-                              mapState.isNavigating
-                                  ? Icons.navigation
-                                  : Icons.my_location,
-                              color: Colors.blue,
-                              size: 40,
-                            ),
-                          ),
-                          // Başlangıç marker'ı (mavi)
-                          if (mapState.startPoint != null)
-                            Marker(
-                              point: mapState.startPoint!,
-                              width: 40,
-                              height: 40,
-                              child: const Icon(
-                                Icons.trip_origin,
-                                color: Colors.blue,
-                                size: 40,
-                              ),
-                            ),
-                          // Varış marker'ı (kırmızı)
-                          if (mapState.destination != null)
-                            Marker(
-                              point: mapState.destination!,
-                              width: 40,
-                              height: 40,
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Colors.red,
-                                size: 40,
-                              ),
-                            ),
-                        ],
-                      ),
-                    // Rota çizgisi
-                    if (mapState.routePoints.isNotEmpty)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: mapState.routePoints,
-                            color: Colors.blue,
-                            strokeWidth: 5.0,
-                          ),
-                        ],
-                      ),
-                    const Scalebar(),
-                    RichAttributionWidget(
-                      attributions: [
-                        TextSourceAttribution(
-                          AppStrings.openStreetMapAttribution,
-                          onTap: () => launchUrl(
-                            Uri.parse(AppConstants.openStreetMapCopyright),
-                          ),
+                    if (mapState.startPoint != null)
+                      Marker(
+                        point: mapState.startPoint!,
+                        width: 36,
+                        height: 36,
+                        child: const Icon(
+                          Icons.trip_origin,
+                          color: Colors.blue,
+                          size: 34,
                         ),
-                      ],
+                      ),
+                    if (mapState.destination != null)
+                      Marker(
+                        point: mapState.destination!,
+                        width: 36,
+                        height: 36,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.red,
+                          size: 36,
+                        ),
+                      ),
+                  ],
+                ),
+              if (mapState.routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: mapState.routePoints,
+                      color: const Color(0xFF1E2A3A),
+                      strokeWidth: 5.0,
                     ),
                   ],
                 ),
+              const Scalebar(),
+              RichAttributionWidget(
+                attributions: [
+                  TextSourceAttribution(
+                    AppStrings.openStreetMapAttribution,
+                    onTap: () => launchUrl(
+                      Uri.parse(AppConstants.openStreetMapCopyright),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          MapSearchWidgets(
+          if (sheetVisible)
+            MapSearchSheet(
+              mapState: mapState,
+              onStartResultSelected: _onStartResultSelected,
+              onDestinationResultSelected: _onDestinationResultSelected,
+            ),
+          if (mapState.routePoints.isNotEmpty)
+            Positioned(
+              left: 16,
+              right: 88,
+              bottom: overlayBottom,
+              child: RouteSummaryCard(
+                distanceMeters: mapState.routeDistanceMeters,
+                durationSeconds: mapState.routeDurationSeconds,
+              ),
+            ),
+          Positioned(
+            right: 16,
+            bottom: overlayBottom + (mapState.routePoints.isNotEmpty ? 76 : 0),
+            child: MapControlStack(
+              isNavigating: mapState.isNavigating,
+              hasRoute: mapState.routePoints.isNotEmpty,
+              onStartNavigation: _startNavigation,
+              onStopNavigation: _stopNavigation,
+              onZoomIn: _zoomIn,
+              onZoomOut: _zoomOut,
+              onGoToCurrentLocation: _goToCurrentPosition,
+              showCurrentLocation:
+                  !mapState.isAtCurrentPosition && !mapState.isNavigating,
+            ),
+          ),
+          MapSearchBar(
             startController: _startController,
             destinationController: _destinationController,
-            mapState: mapState,
             onStartSearchChanged: _onStartSearchChanged,
             onDestinationSearchChanged: _onDestinationSearchChanged,
-            onStartResultSelected: _onStartResultSelected,
-            onDestinationResultSelected: _onDestinationResultSelected,
             onUseCurrentLocationAsStart: _useCurrentLocationAsStart,
             onClearDestination: () {
               ref.read(mapViewModelProvider.notifier).clearDestination();
@@ -304,48 +336,22 @@ class _MapViewState extends ConsumerState<MapView>
           ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Navigasyon başlat/durdur butonu (rota varsa göster)
-          if (mapState.routePoints.isNotEmpty)
-            FloatingActionButton(
-              heroTag: 'navigation',
-              backgroundColor: mapState.isNavigating
-                  ? Colors.red
-                  : Colors.green,
-              onPressed: mapState.isNavigating
-                  ? _stopNavigation
-                  : _startNavigation,
-              child: Icon(
-                mapState.isNavigating ? Icons.stop : Icons.navigation,
-                color: Colors.white,
-              ),
-            ),
-          if (mapState.routePoints.isNotEmpty) const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'zoomIn',
-            mini: true,
-            onPressed: _zoomIn,
-            child: const Icon(Icons.add),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'zoomOut',
-            mini: true,
-            onPressed: _zoomOut,
-            child: const Icon(Icons.remove),
-          ),
-          const SizedBox(height: 8),
-          if (!mapState.isAtCurrentPosition && !mapState.isNavigating)
-            FloatingActionButton(
-              heroTag: 'currentLocation',
-              onPressed: _goToCurrentPosition,
-              child: const Icon(Icons.my_location),
-            ),
-        ],
-      ),
     );
+  }
+
+  double _estimateSheetHeight(BuildContext context, MapState state) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.45;
+    const headerHeight = 88.0;
+    const emptyStateHeight = 72.0;
+    const listTileHeight = 72.0;
+
+    final items = state.searchResults.isNotEmpty
+        ? state.searchResults.length
+        : 1;
+    final listHeight = state.searchResults.isNotEmpty
+        ? items * listTileHeight
+        : emptyStateHeight;
+
+    return math.min(maxHeight, headerHeight + listHeight);
   }
 }

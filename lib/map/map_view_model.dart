@@ -17,6 +17,8 @@ class MapState {
   final String? errorMessage;
   final bool isSearching;
   final List<LatLng> routePoints;
+  final double? routeDistanceMeters;
+  final double? routeDurationSeconds;
   final Position? currentPositionStream;
   final bool isNavigating;
 
@@ -40,6 +42,8 @@ class MapState {
     this.errorMessage,
     this.isSearching = false,
     this.routePoints = const [],
+    this.routeDistanceMeters,
+    this.routeDurationSeconds,
     this.startPoint,
     this.startPointName,
     this.useCurrentLocationAsStart = true,
@@ -58,6 +62,9 @@ class MapState {
     String? errorMessage,
     bool? isSearching,
     List<LatLng>? routePoints,
+    double? routeDistanceMeters,
+    double? routeDurationSeconds,
+    bool clearRouteMeta = false,
     LatLng? startPoint,
     String? startPointName,
     bool? useCurrentLocationAsStart,
@@ -78,6 +85,10 @@ class MapState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isSearching: isSearching ?? this.isSearching,
       routePoints: routePoints ?? this.routePoints,
+      routeDistanceMeters:
+          clearRouteMeta ? null : (routeDistanceMeters ?? this.routeDistanceMeters),
+      routeDurationSeconds:
+          clearRouteMeta ? null : (routeDurationSeconds ?? this.routeDurationSeconds),
       startPoint: clearStartPoint ? null : (startPoint ?? this.startPoint),
       startPointName: clearStartPoint
           ? null
@@ -202,14 +213,23 @@ class MapViewModel extends StateNotifier<MapState> {
     final result = await _service.getRoute(start, destination);
 
     if (result.hasError) {
-      state = state.copyWith(errorMessage: result.error, routePoints: []);
+      state = state.copyWith(
+        errorMessage: result.error,
+        routePoints: [],
+        clearRouteMeta: true,
+      );
     } else {
-      state = state.copyWith(routePoints: result.coordinates, clearError: true);
+      state = state.copyWith(
+        routePoints: result.coordinates,
+        routeDistanceMeters: result.distance,
+        routeDurationSeconds: result.duration,
+        clearError: true,
+      );
     }
   }
 
   void clearRoute() {
-    state = state.copyWith(routePoints: []);
+    state = state.copyWith(routePoints: [], clearRouteMeta: true);
   }
 
   LatLng selectAsStartPoint(LocationResult result) {
@@ -281,6 +301,7 @@ class MapViewModel extends StateNotifier<MapState> {
       clearDestination: true,
       routePoints: [],
       markers: [],
+      clearRouteMeta: true,
     );
   }
 

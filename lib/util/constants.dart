@@ -39,6 +39,9 @@ class AppStrings {
   static const String destinationHint = 'Varış noktası';
   static const String currentLocation = 'Mevcut Konum';
   static const String noResultsFound = 'Sonuç bulunamadı';
+  static const String searchResultsTitle = 'Sonuçlar';
+  static const String searching = 'Aranıyor...';
+  static const String routeSummaryTitle = 'Rota hazır';
 
   // Buttons
   static const String closeButton = 'Kapat';
